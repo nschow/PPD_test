@@ -1,0 +1,1084 @@
+---
+title: "DR 1414.6 all plots"
+author: "Nicole Schow"
+date: "2023-10-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+### Setup 
+```{r}
+
+#read in necessary libraries
+
+library(ggplot2)
+library(reshape2)
+library(tidyverse)
+library(tibble)
+library(magrittr)
+library(utils)
+library(utf8)
+library(dplyr)
+library(plyr)
+library(sas7bdat)
+library(haven)
+library(ggpubr)
+library(scales)
+
+#read in make breaks function 
+source("R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_6_Pinney_BTOD_2Q2023/R/plotting_functions_UPDATE.R")
+
+
+#update directories as needed for new folders created 
+
+adhoc<- "R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_6_Pinney_BTOD_2Q2023"
+
+
+#update this so year and quarter lists match yearquarter list
+yq <- data.frame(yearquarter = c("2013Q2", "", "",
+                                 "2014Q1", "", "", "",
+                                 "2015Q1", "", "", "",
+                                 "2016Q1", "", "", "",
+                                 "2017Q1", "", "", "",
+                                 "2018Q1", "", "", "",
+                                 "2019Q1", "", "", "",
+                                 "2020Q1", "", "", "",
+                                 "2021Q1", "", "", "",
+                                 "2022Q1", "", "", "",
+                                 "2023Q1", "", "", "",
+                                 "2024Q1"),
+                 stringsAsFactors = FALSE)
+
+yq$counter <- 1:nrow(yq)
+
+#define buffer variable here to add counters onto max from dataset to account for stretching plot to 2024Q1
+
+buffer <- 3
+
+#no NMURx this quarter
+#nmu_yq <- data.frame(yearquarter = c("2018Q3", "2019Q1", "2019Q3", "2020Q1",
+#                                    "2020Q3", "2021Q1", "2021Q3", "2022Q1",
+#                                    "2022Q3", "2023Q1"),
+#                     stringsAsFactors = FALSE)
+#nmu_yq$counter <- 1:nrow(nmu_yq)
+
+
+
+druggroup_lkup = tribble(
+  ~level, ~group1 , ~linetype, ~points, ~color, ~label,
+  #----- / --------- / --------- / ------
+  "_01", "Bup", "solid" , 17, "#000000", "Combination Buprenorphine Film",
+  "_02", "Bup", "solid" , 3, "#FF0000", "Single-Ingredient Buprenorphine \nTablets",
+  "_03", "Bup", "solid" , 17, "#5656FF", "Combination Buprenorphine Tablets",
+  "_04", "Bup", "solid" , 15, "#228B22", "Unspecified Buprenorphine",
+  "_05", "Api", "solid" , 8, "#000000", "Buprenorphine",
+  "_06", "Api", "solid" , 18,"#00CCFF", "Oxycodone" ,
+  "_07", "Api", "solid" , 15, "#CC0000", "Hydrocodone",
+  "_08", "Api", "solid" , 16, "#FF00FF", "Methadone"
+)
+
+
+#create list of labellers for panel plots
+#utilizes tribble above so does not need to be updated if labels change
+#opportunity to make code cleaner here
+  
+
+label_lkup <- list(labeller(dg = 
+                              c("_01" = druggroup_lkup$label[druggroup_lkup$level == "_01"],
+                                "_02" = druggroup_lkup$label[druggroup_lkup$level == "_02"], 
+                                "_03" = druggroup_lkup$label[druggroup_lkup$level == "_03"], 
+                                "_04" = druggroup_lkup$label[druggroup_lkup$level == "_04"] )), 
+                   labeller(dg = 
+                              c("_05" = druggroup_lkup$label[druggroup_lkup$level == "_05"],
+                                "_06" = druggroup_lkup$label[druggroup_lkup$level == "_06"], 
+                                "_07" = druggroup_lkup$label[druggroup_lkup$level == "_07"], 
+                                "_08" = druggroup_lkup$label[druggroup_lkup$level == "_08"] )))
+
+
+#create continuous counter map for plotting of yq data
+temp <- read_sas("R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_6_Pinney_BTOD_2Q2023/results/figures/PC/abmis_benzo_yq.sas7bdat")
+
+
+#for expansion add additional years here
+yq_col <- c(unique(temp$yq), 20233, 20234, 20241)
+max <- length(yq_col) -1 
+counter <- c(0:max)
+counter_map <- data.frame(yq_col, counter)
+
+#define new yq label for labels that starts at 2017Q4
+yq_tc <- yq[yq$counter >= 19,]
+yq_tc$yearquarter[yq_tc$counter == 19] <- "2017Q4"
+
+temp_tc <- read_sas(paste0(adhoc, "/results/figures/TC/routes_yq.sas7bdat"))
+yq_col
+yq_col <- unique(temp_tc$yq)
+max <- length(yq_col) -1
+counter <- c(0:max)
+counter_map_tc <- data.frame(yq_col, counter)
+
+
+#create seperate counter map for nmurx
+#temp <- read_sas("R:/RADARS/Ad Hoc Data Requests/Pinney for #BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_4_Pinney_BTOD_1Q2023/results/figures/NMURX/#cases_nmurx_sum_yq.sas7bdat")
+#yq_col <- unique(temp$yearquarter)
+#max <- length(yq_col) -1
+#counter <- c(0:max)
+#counter_map_nmurx <- data.frame(yq_col, counter)
+
+
+```
+
+
+#PC TC DD Loess Plotting
+```{r}
+plot_loess <- function(){
+allprog<-c("PC", "TC", "DD")
+alldrugs<-c("Api" , "Bup")
+alldenom<-c("pop", "units")
+allstrata<-c("Overall", "0-5", "6-11", "12-17", "18-25", "26+", "65+")
+
+o <-1
+p <-1
+i <-1
+d <-1
+s <-1
+
+#//////////////////
+#loop through drug
+#//////////////////
+for(i in seq_along(alldrugs)) {
+  drug <- as.character(alldrugs[i])
+  
+  
+  dgs<-druggroup_lkup$level[druggroup_lkup$group1 == drug ]
+  colors<-druggroup_lkup$color[druggroup_lkup$group1 == drug ]
+  names<-druggroup_lkup$label[ druggroup_lkup$group1 == drug ]
+  type<-druggroup_lkup$linetype[druggroup_lkup$group1 == drug ]
+  points<-druggroup_lkup$points[druggroup_lkup$group1 == drug ]
+  dotcolor<-c("black", "black","black", "black")
+  
+  #get labeller for panel plot
+  if (drug == "Bup"){
+    lblr <- label_lkup[[1]]
+  }
+  if (drug == "Api"){
+    lblr <- label_lkup[[2]]
+  }
+  
+  
+  #////////////////////////////////
+  #loop through denominators
+  #///////////////////////////////
+  for(d in seq_along(alldenom)) {
+    denom <- as.character(alldenom[d])
+    if (denom == "pop"){
+      get_ylabel <- c("Rate per 100,000 Population")
+    }
+    if (denom == "units"){
+      get_ylabel <- c("Rate per 100,000 Dosage Units Dispensed")
+    }
+    
+    get_ylabel2<- as.character(get_ylabel)
+    
+    
+    dataname<-paste("loess_", denom, ".sas7bdat", sep = "")
+    
+    for(p in seq_along(allprog)) {
+      prog <- as.character(allprog[p])
+      
+      tables <- paste(adhoc, "/results/figures/",prog, sep = "") #changed to /results/figures/ from /results/tables
+      
+      setwd(tables)
+      #read in dataset here
+      data <- read_sas(dataname)
+      data2<-data[data$dg %in% dgs, ]
+      
+      data2$counter<-as.factor(data2$counter)
+      labels<-names
+      
+      if (denom == "pop"){
+        ylabelmax<-(max(data2$poprate, na.rm = TRUE)*1.2)}
+      
+      if (denom=="units"){
+        ylabelmax<-(max(data2$unitsrate, na.rm = TRUE)*1.2)}
+      
+      outcome<-unique(data2$outcome)
+      for(o in seq_along(outcome)) {
+        out <- as.character(outcome[o])
+        
+        data3<-data2[(data2$outcome == out),]
+        
+        
+        if (prog == "PC"){
+          allstrata<-c("Overall", "0-5", "6-11", "12-17", "18-25", "26+", "65+")
+        }
+        if (prog == "TC"){
+          allstrata<-c("Overall", "18-25", "26+")
+        }
+        if (prog == "DD"){
+          allstrata<-c("Overall")
+          labels <- labels[labels != "Unspecified Buprenorphine"]
+          data3 <- data3[data3$dg != "_04",]
+        }
+        
+        
+        for(s in seq_along(allstrata)) {
+          strata <- as.character(allstrata[s])
+          
+          if (strata == "Overall"){strataname <- "Overall"} 
+          if (strata == "0-5"){strataname <- c("0_5")} 
+          if (strata == "6-11"){strataname <- c("6_11")} 
+          if (strata == "12-17"){strataname <- c("12_17")} 
+          if (strata == "18-25"){strataname <- c("18_25")} 
+          if (strata == "26+"){strataname <- c("26+")}
+          if (strata == "65+"){strataname <- c("65+")}
+          
+          data4<-data3[(data3$strata %in% strata),]
+          
+          if(nrow(data4) >0) {
+            
+            a<-max(data4$UpperCL, na.rm=T);
+            b<-max(data4$DepVar, na.rm=T);
+            
+            if (a>b){
+              ymax =a
+              }else if(b>a){
+                ymax =b
+              }else{ 
+                ymax = a 
+                }
+            
+            
+            #if our greatest precision is 0.001, don't want breaks less than 0.0001
+            #for low values manually set breaks instead of feeding into make_breaks function
+            
+            if(ymax < 0.003) {
+              ymax <- 0.003
+              ybreaks <- c(0.001, 0.002, 0.003)
+            }else{
+              ymax <- ymax *1.001
+              ybreaks <- make_breaks(ymax)
+            }
+            
+            break_max <-  max(ybreaks)
+            
+            print(ymax)
+            
+            #sort dataset for proper labeling
+            data4 <- data4 %>%
+              arrange(counter)
+            
+            #add new counter variable for panel plot creation
+            data4$counter2 <- as.numeric(data4$counter)-1
+            
+            uplim <- max(data4$counter2) + buffer
+            
+            #/////////////
+            #now to plot!
+            #/////////////
+            plot1<-ggplot(data4, aes(x= counter2, y=Pred, group = dg, color=dg, linetype=dg))+
+              geom_line(size=1)+
+              geom_line(aes(y=DepVar, group = dg, colour = dg), size = 1)   +
+              geom_point(aes(y=DepVar, shape = dg, colour=dg), size = 2)+
+              geom_line(aes(y=LowerCL, group = dg, colour = dg), size = 1, linetype="dashed")   +
+              geom_line(aes(y=UpperCL, group = dg, colour = dg), size = 1, linetype="dashed")   + 
+              scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
+              scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
+              scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
+              xlab("Year-Quarter")+
+              ylab(get_ylabel2)+
+              facet_wrap(vars(dg), scale="free", labeller =lblr, nrow=2) +
+              coord_cartesian(xlim = c(0,uplim)) +
+              expand_limits(x=0, y = 0)+
+              scale_x_continuous(breaks = c(0:uplim), expand=c(0,0), labels= yq$yearquarter) + 
+              scale_y_continuous(expand = expansion(mult=c(0,0.001)), limits = c(0, break_max), breaks=ybreaks, labels= label_number(accuracy = 0.0001))+
+              theme_gray(base_size = 14)+
+              theme_bw()+
+              theme(panel.border = element_blank(),
+                    axis.line = element_line(),
+                    axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+                    axis.title.y = element_text(size = 12, vjust = 1),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank(),        
+                    panel.background = element_blank(),
+                    legend.text=element_text(size=8),
+                    legend.title=element_blank(),
+                    axis.line.y = element_line(colour = "black"),
+                    axis.line.x = element_line(colour = "black"),
+                    strip.background = element_blank(),
+                    legend.position = "none")
+            
+            ggsave(filename = paste(adhoc, "/results/figures/", prog,"/",out,"_" , drug, "_", strata, "_", denom,".png", sep= ""), height =5 ,width=8, plot = plot1)
+          }
+        }
+      }
+    }
+  }
+}
+}
+
+#run plotting function 
+plot_loess()
+
+
+```
+
+
+```{r}
+
+#///////////////////////////////////////////////////////////////
+#         PC Benzos Plotting 
+#//////////////////////////////////////////////////////////////
+plot_pc_benzo <- function(){
+  
+indata_path <- paste0(adhoc,"/results/figures/PC")
+alldrugs<-c("Api" , "Bup")
+alldenom<-c("count")
+
+i <-2
+d <-1
+
+#//////////////////
+#loop through drug
+#//////////////////
+for(i in seq_along(alldrugs)) {
+  drug <- as.character(alldrugs[i])
+  
+  
+  dgs<-druggroup_lkup$level[druggroup_lkup$group1 == drug ]
+  colors<-druggroup_lkup$color[druggroup_lkup$group1 == drug ]
+  names<-druggroup_lkup$label[ druggroup_lkup$group1 == drug ]
+  type<-druggroup_lkup$linetype[druggroup_lkup$group1 == drug ]
+  points<-druggroup_lkup$points[druggroup_lkup$group1 == drug ]
+  dotcolor<-c("black", "black","black", "black")
+  
+  if (drug == "Bup"){
+    lblr <- label_lkup[[1]]
+  }
+  if (drug == "Api"){
+    lblr <- label_lkup[[2]]
+  }
+  
+  #////////////////////////////////
+  #loop through denominators
+  #///////////////////////////////
+  for(d in seq_along(alldenom)) {
+    denom <- as.character(alldenom[d])
+    
+    setwd(indata_path)
+    data <- read_sas("abmis_benzo_yq.sas7bdat") #UPDATE: FILE NAME
+    data2<-data[data$dg %in% dgs, ]
+    
+    #data2$dg<-as.factor(data2$dg)
+    #data2$yq<-as.factor(data2$yq)
+    labels<-names
+    
+    
+    get_ylabel <- c("Percentage of Cases with Benzodiazepine","Percentage of Cases with Benzodiazepine" )
+    
+    #///////////////////
+    #get correct y label  
+    #///////////////////
+    get_ylabel2<- as.character(get_ylabel[d])
+    
+    ##get max y values and set custom axis breaks; 
+ 
+    ymax <- max(data2$Num_Perc, na.rm = TRUE)
+    
+    if(ymax < 0.003) {
+          ymax <- 0.003
+          ybreaks <- c(0.001, 0.002, 0.003)
+      }else{
+          ymax <- ymax *1.001
+          ybreaks <- make_breaks(ymax)
+          }
+
+    break_max <-  max(ybreaks)
+    
+      #############
+    #sort data for proper labeling
+    #join counter map on to get correct labels, allows for plotting on continuous scale
+    ##############
+    
+    data2 <- data2 %>%
+      arrange(yq) %>%
+      left_join(counter_map, by=c("yq" = "yq_col"))
+    
+  
+    #find xmin and xmax for coord cartesian
+    xmax <- max(data2$counter) +buffer
+  
+    
+    #//////////////
+    #now to plot!
+    #/////////////
+    plot1<-ggplot(data2, aes(x=counter, y=Num_Perc, group = dg, color=dg, linetype=dg))+
+      geom_line(size=1)+
+      geom_point(aes(y=Num_Perc, shape = dg, color = dg), size = 2)+
+      scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
+      scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
+      scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
+      xlab("Year-Quarter")+
+      
+      {if(drug == "Api")ylab(get_ylabel[1])}+   
+      
+      {if(drug == "Bup")ylab(get_ylabel[2])}+
+      facet_wrap(vars(dg), scale="free", labeller=lblr)+
+      coord_cartesian(xlim = c(0, xmax)) +
+      expand_limits(y = 0)+
+      scale_x_continuous(breaks=c(0:xmax), expand=c(0,0), labels=yq$yearquarter) +
+      scale_y_continuous(expand = expansion(mult=c(0,0.001)), limits = c(0, break_max), breaks= ybreaks, labels= label_number(accuracy = 0.1))+
+      theme_gray(base_size = 14)+
+      theme_bw()+
+      theme(panel.border = element_blank(),
+            axis.line = element_line(),
+            axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+            axis.title.y = element_text(size = 12, vjust = 1),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),        
+            panel.background = element_blank(),
+            legend.text=element_text(size=8),
+            legend.title=element_blank(),
+            axis.line.y = element_line(colour = "black"),
+            axis.line.x = element_line(colour = "black"), 
+            strip.background = element_blank(),
+            legend.position = "none")
+    
+    ggsave(filename = paste(adhoc, "/results/figures/PC/",  drug, ".png", sep= ""), height =5 ,width=8, plot = plot1)
+    
+  }
+}
+}
+
+plot_pc_benzo()
+```
+
+```{r}
+indata_path <- paste0(adhoc, "/results/figures/TC")
+setwd(indata_path)
+data <- read_sas("abuse_bup_yq.sas7bdat")
+ data2 <- data %>%
+      mutate(yq = as.numeric(YearQuarter_2))
+
+ data2 <- data %>%
+      mutate(yq = as.numeric(YearQuarter_2)) %>%
+      left_join(counter_map, by=c("yq" = "yq_col"))
+```
+
+```{r}
+plot_tc_benzo <- function(){
+  
+indata_path <- paste0(adhoc, "/results/figures/TC")
+alldrugs<-c("Api" , "Bup")
+alldenom<-c("count")
+
+i <-2
+d <-1
+
+#//////////////////
+#loop through drug
+#//////////////////
+for(i in seq_along(alldrugs)) {
+  drug <- as.character(alldrugs[i])
+  
+  
+  dgs<-druggroup_lkup$level[druggroup_lkup$group1 == drug ]
+  colors<-druggroup_lkup$color[druggroup_lkup$group1 == drug ]
+  names<-druggroup_lkup$label[ druggroup_lkup$group1 == drug ]
+  type<-druggroup_lkup$linetype[druggroup_lkup$group1 == drug ]
+  points<-druggroup_lkup$points[druggroup_lkup$group1 == drug ]
+  dotcolor<-c("black", "black","black", "black")
+  
+  if (drug == "Bup"){
+    lblr <- label_lkup[[1]]
+  }
+  if (drug == "Api"){
+    lblr <- label_lkup[[2]]
+  }
+  
+  #////////////////////////////////
+  #loop through denominators
+  #///////////////////////////////
+  for(d in seq_along(alldenom)) {
+    denom <- as.character(alldenom[d])
+    
+    setwd(indata_path)
+    data <- read_sas("abuse_bup_yq.sas7bdat") #UPDATE FILE NAME IF NECESSARY
+    data2<-data[data$dg %in% dgs, ]
+    
+    #data2$dg<-as.factor(data2$dg)
+    #data2$YearQuarter_2<-as.factor(data2$YearQuarter_2)
+    labels<-names
+    
+    
+    get_ylabel <- c("Percentage of Respondents Reporting\n Buprenorphine as their Primary Drug of Abuse","Percentage of Respondents Reporting\n Buprenorphine as their Primary Drug of Abuse")
+    
+    #///////////////////
+    #get correct y label  
+    #///////////////////
+    get_ylabel2<- as.character(get_ylabel[d])
+    
+    ############
+    #get ymax and correct breaks
+    ############
+    ymax <- max(data2$Num_Perc, na.rm = TRUE)
+    
+     if(ymax < 0.003) {
+          ymax <- 0.003
+          ybreaks <- c(0.001, 0.002, 0.003)
+      }else{
+          ymax <- ymax *1.001
+          ybreaks <- make_breaks(ymax)
+      }
+ 
+    break_max <- max(ybreaks)
+    
+    #############
+    #sort data for proper labeling
+    ##############
+    
+    data2$yq <- as.numeric(data2$YearQuarter_2)
+    
+    #join on counter variable for plotting
+    
+    data2 <- data2 %>%
+      mutate(yq = as.numeric(YearQuarter_2)) %>%
+      arrange(yq) %>%
+      left_join(counter_map, by=c("yq" = "yq_col"))
+    
+    #find xmax for coord cartesion
+    xmax <- max(data2$counter) + buffer
+  
+    
+    #//////////////
+    #now to plot!
+    #/////////////
+    plot1<-ggplot(data2, aes(x= counter, y=Num_Perc, group = dg, color=dg, linetype=dg))+
+      
+      geom_line(size=1)+
+      geom_point(aes(y=Num_Perc, shape = dg, color = dg), size = 2)+
+      scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
+      scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
+      scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
+      xlab("Year-Quarter")+
+      
+      {if(drug == "Api")ylab(get_ylabel[1])}+   
+      
+      {if(drug == "Bup")ylab(get_ylabel[2])}+
+      facet_wrap(vars(dg), scale="free", labeller=lblr)+
+      coord_cartesian(xlim=c(0, xmax)) + 
+      expand_limits(y = 0)+
+      scale_x_continuous(breaks=c(0:xmax), expand=c(0,0), labels=yq$yearquarter) +
+      scale_y_continuous(expand = expansion(mult=c(0,0.001)), limits = c(0, break_max), breaks=ybreaks,labels= label_number(accuracy = 0.1))+
+      theme_gray(base_size = 14)+
+      theme_bw()+
+      theme(panel.border = element_blank(),
+            axis.line = element_line(),
+            axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+            axis.title.y = element_text(size = 12, vjust = 1),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),        
+            panel.background = element_blank(),
+            legend.text=element_text(size=8),
+            legend.title=element_blank(),
+            axis.line.y = element_line(colour = "black"),
+            axis.line.x = element_line(colour = "black"),
+            strip.background = element_blank(),
+            legend.position = "none")
+    
+    ggsave(filename = paste(adhoc, "/results/figures/TC/",  drug, ".png", sep= ""), height =5 ,width=8, plot = plot1)
+    
+  
+}
+}
+
+}
+plot_tc_benzo()
+```
+  
+
+```{r}
+indata_path <- paste0(adhoc, "/results/figures/TC")
+setwd(indata_path)
+data <- read_sas("routes_yq.sas7bdat")
+data3 <- data %>%
+        arrange(yq) %>%
+        left_join(counter_map_tc, by=c("yq" = "yq_col"))
+        
+xmax <- max(data3$counter) + buffer
+
+```
+
+```{r}
+plot_tc_routes <- function(){
+  indata_path <- paste0(adhoc, "/results/figures/TC")
+  alldrugs<-c("Api" , "Bup")
+  alldenom<-c("count")
+  
+  i <-2
+  d <-1
+  
+  setwd(indata_path)
+  data <- read_sas("routes_yq.sas7bdat") #UPDATE FILE NAME IF NECESSARY 
+  
+  #//////////////////
+  #loop through drug
+  #//////////////////
+  for(i in seq_along(alldrugs)) {
+    drug <- as.character(alldrugs[i])
+    
+    
+    dgs<-druggroup_lkup$level[druggroup_lkup$group1 == drug ]
+    colors<-druggroup_lkup$color[druggroup_lkup$group1 == drug ]
+    names<-druggroup_lkup$label[ druggroup_lkup$group1 == drug ]
+    type<-druggroup_lkup$linetype[druggroup_lkup$group1 == drug ]
+    points<-druggroup_lkup$points[druggroup_lkup$group1 == drug ]
+    dotcolor<-c("black", "black","black", "black")
+    
+  if (drug == "Bup"){
+    lblr <- label_lkup[[1]]
+  }
+  if (drug == "Api"){
+    lblr <- label_lkup[[2]]
+  }
+    
+    #////////////////////////////////
+    #loop through denominators
+    #///////////////////////////////
+    for(d in seq_along(alldenom)) {
+      denom <- as.character(alldenom[d])
+      
+  
+      data2<-data[data$dg %in% dgs, ]
+      
+      #data2$dg<-as.factor(data2$dg)
+      data2$yq<-as.factor(data2$yq)
+      labels<-names
+      
+      for(j in 1:nrow(data2)){
+        if (data2[j,'route_perc'] == '<0.1'){data2[j,'route_perc'] <- '0'} 
+        data2[j,'route_perc2']<- as.numeric(data2[j,'route_perc'])
+      } 
+      
+      
+      for(route_loop in unique(data2$strata)){
+        print(route_loop)
+        
+        data3 <- subset(data2,data2$strata == route_loop) 
+        
+        
+        get_ylabel <- c(paste0("Percentage of Cases who ",route_loop),paste0("Percentage of Cases who ",route_loop))
+        
+        if (route_loop == "Injection"){
+          get_ylabel <- c("Percentage of Cases who Injected", "Percentage of Cases who Injected")
+        }
+        
+        #///////////////////
+        #get correct y label  
+        #///////////////////
+        get_ylabel2<- as.character(get_ylabel[d])
+        
+  
+        
+        ######################
+        #get ymax and breaks with ymax labeled 
+        #########################
+
+        ymax <- max(data3$route_perc2)
+        
+        if(ymax < 0.003) {
+          ymax <- 0.003
+          ybreaks <- c(0.001, 0.002, 0.003)
+      }else{
+          ymax <- ymax *1.001
+          ybreaks <- make_breaks(ymax)
+      }
+        
+        
+        print(paste0("ymax: ", ymax))
+        ybreaks <- make_breaks(ymax)
+        break_max <-  max(ybreaks)
+        
+        # sort data by yearquarter to get proper labeling
+        data3 <- data3 %>%
+          arrange(yq) %>%
+          left_join(counter_map_tc, by=c("yq" = "yq_col"))
+        
+        xmax <- max(data3$counter) + buffer
+        
+        #//////////////
+        #now to plot!
+        #/////////////
+        plot1<-ggplot(data3, aes(x=counter, y=route_perc2, group = dg, color=dg, linetype=dg))+
+          
+          geom_line(size=1)+
+          geom_point(aes(y=route_perc2, shape = dg, color = dg), size = 2)+
+          #facet_grid(cols = vars(strata))+
+          
+          scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
+          scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
+          scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
+          xlab("Year-Quarter")+
+          
+          {if(drug == "Api")ylab(get_ylabel[1])}+   
+          
+          {if(drug == "Bup")ylab(get_ylabel[2])}+
+          
+          facet_wrap(vars(dg), scale="free", labeller=lblr) +
+          coord_cartesian(xlim = c(0, xmax)) +
+          expand_limits(y = 0)+
+          scale_x_continuous (breaks=c(0:xmax), expand=c(0,0), labels=yq_tc$yearquarter) +
+          scale_y_continuous(expand = expansion(mult=c(0,0.001)), limits = c(0, break_max), breaks=ybreaks, labels= label_number(accuracy = 0.1))+
+          theme_gray(base_size = 14)+
+          theme_bw()+
+          theme(panel.border = element_blank(),
+                axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+                axis.title.y = element_text(size = 12, vjust = 1),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),        
+                panel.background = element_blank(),
+                legend.text=element_text(size=8),
+                legend.title=element_blank(),
+                axis.line.y = element_line(colour = "black"),
+                axis.line.x = element_line(colour = "black"),
+                strip.background = element_blank(),
+                legend.position = "none")
+        
+        ggsave(filename = paste(adhoc, "/results/figures/TC/",  drug,"_",route_loop,".png", sep= ""), height =5 ,width=8, plot = plot1)
+      }  
+    }
+  }
+}
+
+plot_tc_routes()
+```
+
+
+
+
+```{r}
+
+plot_iqvia <- function(){
+  
+druggroup_lkup_iqvia = tribble(
+    ~level, ~group1 , ~linetype, ~points, ~color, ~label,
+    #----- / --------- / --------- / ------
+    "_01", "Bup", "solid" , 17, "#000000", "Combination Buprenorphine Film",
+    "_02", "Bup", "solid" , 3, "#FF0000", "Single-Ingredient Buprenorphine \nTablets",
+    "_03", "Bup", "solid" , 17, "#5656FF", "Combination Buprenorphine Tablets",
+    "_04", "Bup", "solid" , 15, "#228B22", "Total Buprenorphine",
+    "_05", "Api", "solid" , 8, "#000000", "Buprenorphine",
+    "_06", "Api", "solid" , 18,"#00CCFF", "Oxycodone" ,
+    "_07", "Api", "solid" , 15, "#CC0000", "Hydrocodone",
+    "_08", "Api", "solid" , 16, "#FF00FF", "Methadone"
+  )
+ims_path <- paste0(adhoc, "/results/figures/IQVIA") #updated
+alldrugs<-c("Api" , "Bup")
+alldenom<-c("units")
+
+i <-2
+d <-1
+
+label_lkup_iqvia<- list(labeller(dg = 
+                              c("_01" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_01"],
+                                "_02" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_02"], 
+                                "_03" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_03"], 
+                                "_04" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_04"] )), 
+                   labeller(dg = 
+                              c("_05" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_05"],
+                                "_06" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_06"], 
+                                "_07" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_07"], 
+                                "_08" = druggroup_lkup_iqvia$label[druggroup_lkup_iqvia$level == "_08"] )))
+
+#//////////////////
+#loop through drug
+#//////////////////
+for(i in seq_along(alldrugs)) {
+  drug <- as.character(alldrugs[i])
+  
+  
+  dgs<-druggroup_lkup_iqvia$level[druggroup_lkup$group1 == drug ]
+  colors<-druggroup_lkup_iqvia$color[druggroup_lkup$group1 == drug ]
+  names<-druggroup_lkup_iqvia$label[ druggroup_lkup$group1 == drug ]
+  type<-druggroup_lkup_iqvia$linetype[druggroup_lkup$group1 == drug ]
+  points<-druggroup_lkup_iqvia$points[druggroup_lkup$group1 == drug ]
+  dotcolor<-c("black", "black","black", "black")
+  
+  
+  
+  if (drug == "Bup"){
+    lblr <- label_lkup_iqvia[[1]]
+  }
+  if (drug == "Api"){
+    lblr <- label_lkup_iqvia[[2]]
+  }
+  
+  #////////////////////////////////
+  #loop through denominators
+  #///////////////////////////////
+  for(d in seq_along(alldenom)) {
+    denom <- as.character(alldenom[d])
+    
+    setwd(ims_path)
+    data <- read_sas("iqvia_sum_yq.sas7bdat") #UPDATE FILE NAME IF NECESSARY
+    data2<-data[data$dg %in% dgs, ]
+    
+    # data2$dg<-as.factor(data2$dg)
+    #data2$yearquarter<-as.factor(data2$yearquarter)
+    data2$yq <- paste0(floor(data2$yearquarter/10)-2000,"q", data2$yearquarter %% 10)
+    labels<-names
+    
+    
+    get_ylabel <- c("Dosage Units Dispensed")
+    
+    #///////////////////
+    #get correct y label  
+    #///////////////////
+    get_ylabel2<- as.character(get_ylabel[d])
+    
+    ##get max y values and set custom axis breaks; 
+    
+    
+    ymax <- max(data2$units, na.rm = TRUE)
+    
+    if(ymax < 0.003) {
+          ymax <- 0.003
+          ybreaks <- c(0.001, 0.002, 0.003)
+      }else{
+          ymax <- ymax *1.001
+          ybreaks <- make_breaks(ymax)
+      }
+    
+    print(paste0("ymax: ", ymax))
+    ybreaks <- make_breaks(ymax)
+    break_max <- max(ybreaks)
+    
+    #if(drug == "Api"){
+      #ymax <- 2500000000
+    #}
+    
+    #sort dataset by yearquarter to ensure proper labeling
+    data2 <- data2 %>% 
+      arrange(yearquarter) %>%
+      left_join(counter_map, by=c("yearquarter" = "yq_col"))
+    
+    xmax <- max(data2$counter) + buffer
+    
+    #/////////////
+    #now to plot!
+    #/////////////
+    plot1<-ggplot(data2, aes(x=counter, y=units, group = dg, color=dg, linetype=dg))+
+      
+      geom_line(size=1)+
+      geom_point(aes(y=units, shape = dg, color = dg), size = 2)+
+      scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
+      scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
+      scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
+      xlab("Year-Quarter")+
+      ylab(get_ylabel2)+
+      facet_wrap(vars(dg), scale="free", labeller=lblr) +
+      coord_cartesian(xlim = c(0, xmax)) +
+      expand_limits(y = 0)+
+      scale_x_continuous(breaks=c(0:xmax), expand=c(0,0), labels=yq$yearquarter) +
+      scale_y_continuous(expand = expansion(mult=c(0,0.001)), limits=c(0,break_max), breaks=ybreaks, labels= scales::comma)+
+      theme_gray(base_size = 14)+
+      theme_bw()+
+      theme(panel.border = element_blank(),
+            axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+            axis.title.y = element_text(size = 12, vjust = 1),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),        
+            panel.background = element_blank(),
+            legend.text=element_text(size=8),
+            legend.title=element_blank(),
+            axis.line.y = element_line(colour = "black"),
+            axis.line.x = element_line(colour = "black"),
+            strip.background = element_blank(),
+            legend.position = "none")
+
+    
+    ggsave(filename = paste(adhoc, "/results/figures/IQVIA/",  drug, ".png", sep= ""), height =5 ,width=8, plot = plot1)
+    
+  }
+}
+}
+
+plot_iqvia()
+
+```
+
+```{r}
+plot_nmurx <- function(){
+  
+  nmurx<-paste(adhoc, "/results/figures/NMURx", sep = "") 
+  setwd(nmurx)
+  alldrugs<-c("Api" , "Bup")
+  alldenom<-c("pop", "units")
+  allstrata<-c("Overall", "18-25", "26+")
+  
+  
+  
+  o<-1
+  p<-1
+  i <-1
+  d<-2
+  s<-1
+  
+  #//////////////////
+  #loop through drug
+  #//////////////////
+  for(i in seq_along(alldrugs)) {
+    drug <- as.character(alldrugs[i])
+    
+    
+    dgs<-druggroup_lkup$level[druggroup_lkup$group1 == drug ]
+    colors<-druggroup_lkup$color[druggroup_lkup$group1 == drug ]
+    names<-druggroup_lkup$label[ druggroup_lkup$group1 == drug ]
+    type<-druggroup_lkup$linetype[druggroup_lkup$group1 == drug ]
+    points<-druggroup_lkup$points[druggroup_lkup$group1 == drug ]
+    dotcolor<-c("black", "black","black", "black")
+    
+  if (drug == "Bup"){
+    lblr <- label_lkup[[1]]
+  }
+  if (drug == "Api"){
+    lblr <- label_lkup[[2]]
+  }
+    
+    #////////////////////////////////
+    #loop through denominators
+    #///////////////////////////////
+    for(d in seq_along(alldenom)) {
+      denom <- as.character(alldenom[d])
+      if (denom == "pop"){
+        get_ylabel <- c("Rate per 100,000 Adult Population")
+      }
+      if (denom == "units"){
+        get_ylabel <- c("Rate per 100,000 Dosage Units Dispensed")
+      }
+      
+      get_ylabel2<- as.character(get_ylabel)
+      
+      for(s in seq_along(allstrata)) {
+        strata <- as.character(allstrata[s])
+        
+        if (strata == "Overall"){strataname <- "Overall"} 
+        if (strata == "18-25"){strataname <- c("18_25")} 
+        if (strata == "26+"){strataname <- c("26+")}
+        
+        #these are in one dataset now, need to seperate overall and other
+        dataname <- paste0("cases_nmurx_sum_yq.sas7bdat")
+        data_raw <- read_sas(dataname)
+        
+        if (strata == "Overall"){
+          data <- data_raw[data_raw$strata == " Overall", ] #note space before overall, might need to update if changes in next quarter
+        }
+        if (strata != "Overall"){
+          data <- data_raw[data_raw$strata != " Overall", ]
+        }
+      
+        data2<-data[data$dg %in% dgs, ]
+        labels<-names
+        
+        if (denom == "pop"){
+          ylabelmax<-(max(data2$pop_rate, na.rm = TRUE)*1.2)
+          data2$yvar<-data2$pop_rate
+          data2$LowerCL <- data2$pop_low
+          data2$UpperCL <- data2$pop_high}
+        
+        if (denom=="units"){
+          ylabelmax<-(max(data2$units_rate, na.rm = TRUE)*1.2) #updated unit_rate to units_rate
+          data2$yvar= data2$units_rate
+          data2$LowerCL <- data2$units_low
+          data2$UpperCL <- data2$units_high}
+        
+        outcome<-unique(data2$outcome)
+        for(o in seq_along(outcome)) {
+          out <- as.character(outcome[o])
+          
+          data3<-data2[(data2$outcome == out),]
+          
+          if (strata == "Overall") {data4 <- data3} else 
+          {data4<-data3[(data3$strata %in% strata),] }
+          
+          data5 <- data4[(data4$non_suppressed_qtr>=5),]
+    
+          data5$launch <- paste0(floor(data5$yearquarter/10)-2000,"q", data5$yearquarter %% 10)
+          plot_yes_no<-max(data5$non_suppressed_qtr)
+          #only plots if atleast 5 non-supressed observations
+          if (plot_yes_no >=5){ 
+            
+            max_y = max(data5$yvar, na.rm = TRUE)
+            max_upper = max(data5$UpperCL, na.rm = TRUE)
+            max_lower = max(data5$LowerCL, na.rm = TRUE)
+            
+            ymax <- max(max_y, max_upper, max_lower)*1.001
+            print(paste0("ymax: ", ymax))
+            ybreaks <- make_breaks(ymax)
+            break_max <-  max(ybreaks)
+            
+            #sort data for proper labeling
+            
+            data5 <- data5 %>%
+              arrange(yearquarter) %>%
+              left_join(counter_map_nmurx, by=c("yearquarter" = "yq_col"))
+            
+            xmax <- max(data5$counter)
+            print(paste0("xmax: ", xmax))
+            
+            data5$counter <- as.numeric(data5$counter)
+            #data5$dg <- as.numeric(sub('_', '', data5$dg))
+          
+            #/////////////
+            #now to plot!
+            #/////////////
+            plot1<-ggplot(data5, aes(x=counter, y=yvar, group = dg, color=dg, linetype=dg))+
+              geom_line(size=1)+
+              geom_line(aes(y=yvar, group = dg, colour = dg), size = 1)   + #changed size to linewidth
+              geom_point(aes(y=yvar, shape = dg, colour=dg), size= 2) +         #change size ot lindewidth
+              geom_vline(xintercept=7,lwd=1,colour="green", linetype="dotted") + #keep this at 22q1
+            
+              geom_line(aes(y=LowerCL, group = dg, colour = dg), size = 1, linetype="dashed")   +
+              geom_line(aes(y=UpperCL, group = dg, colour = dg), size = 1, linetype="dashed")   + 
+              
+              scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
+              scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
+              scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
+              xlab("Year-Quarter")+
+              ylab(get_ylabel2)+
+              facet_wrap(vars(dg), scale="free", labeller=lblr, nrow=2 ) + 
+              coord_cartesian(xlim = c(0, xmax)) + 
+              expand_limits(y = 0)+
+              scale_x_continuous(breaks=counter_map_nmurx$counter, expand=c(0,0), labels=nmu_yq$yearquarter) +
+              scale_y_continuous(expand = expansion(mult=c(0,0.001)), limits = c(0,break_max), breaks=ybreaks) +
+              theme_gray(base_size = 14)+
+              theme_bw()+
+              theme(panel.border = element_blank(),
+                    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+                    axis.title.y = element_text(size = 12, vjust = 1),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank(),        
+                    panel.background = element_blank(),
+                    legend.text=element_text(size=8),
+                    legend.title=element_blank(),
+                    axis.line.y = element_line(colour = "black"),
+                    axis.line.x = element_line(colour = "black"),
+                    strip.background = element_blank(),
+                    legend.position = "none")
+            
+            ggsave(filename = paste(adhoc, "/results/figures/NMURx/",out,"_" , drug, "_", strata, "_", denom,".png", sep= ""), height =4 ,width=7, plot = plot1)
+            
+          }
+        }
+      }
+    }
+  }
+}
+
+plot_nmurx()
+```
+
+
