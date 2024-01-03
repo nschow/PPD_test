@@ -1,5 +1,5 @@
 ---
-title: "DR 1414.6 all plots"
+title: "all_plots"
 author: "Nicole Schow"
 date: "2023-10-03"
 output: html_document
@@ -12,6 +12,13 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ### Setup 
 ```{r}
+
+######################################
+##########UPDATE HERE#####################
+
+adhoc<- "R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_7_Pinney_BTOD_3Q2023"
+
+###############################################################################
 
 #read in necessary libraries
 
@@ -30,14 +37,9 @@ library(ggpubr)
 library(scales)
 
 #read in make breaks function 
-source("R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_6_Pinney_BTOD_2Q2023/R/plotting_functions_UPDATE.R")
+source(paste0(adhoc, "/R/plotting_functions.R"))
 
-
-#update directories as needed for new folders created 
-
-adhoc<- "R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_6_Pinney_BTOD_2Q2023"
-
-
+###########UPDATE ##########################
 #update this so year and quarter lists match yearquarter list
 yq <- data.frame(yearquarter = c("2013Q2", "", "",
                                  "2014Q1", "", "", "",
@@ -54,10 +56,13 @@ yq <- data.frame(yearquarter = c("2013Q2", "", "",
                  stringsAsFactors = FALSE)
 
 yq$counter <- 1:nrow(yq)
+yq$tickmark <- ifelse (yq$yearquarter %in% "",
+                      NaN,
+                      (yq$counter-1))
 
 #define buffer variable here to add counters onto max from dataset to account for stretching plot to 2024Q1
 
-buffer <- 3
+buffer <- 2
 
 #no NMURx this quarter
 #nmu_yq <- data.frame(yearquarter = c("2018Q3", "2019Q1", "2019Q3", "2020Q1",
@@ -100,11 +105,11 @@ label_lkup <- list(labeller(dg =
 
 
 #create continuous counter map for plotting of yq data
-temp <- read_sas("R:/RADARS/Ad Hoc Data Requests/Pinney for BPMG/DR_1414_Pinney_BTOD_contract_through_2022_20220518/Task_6_Pinney_BTOD_2Q2023/results/figures/PC/abmis_benzo_yq.sas7bdat")
+temp <- read_sas(paste0(adhoc, "/results/figures/PC/abmis_benzo_yq.sas7bdat"))
 
-
+#############UPDATE AT YEARQUARTER ##################
 #for expansion add additional years here
-yq_col <- c(unique(temp$yq), 20233, 20234, 20241)
+yq_col <- c(unique(temp$yq), 20234, 20241)
 max <- length(yq_col) -1 
 counter <- c(0:max)
 counter_map <- data.frame(yq_col, counter)
@@ -112,6 +117,10 @@ counter_map <- data.frame(yq_col, counter)
 #define new yq label for labels that starts at 2017Q4
 yq_tc <- yq[yq$counter >= 19,]
 yq_tc$yearquarter[yq_tc$counter == 19] <- "2017Q4"
+
+#update counter;
+  yq_tc$counter <- yq_tc$counter - 19
+  yq_tc$tickmark <- ifelse(is.nan(yq_tc$tickmark), NaN, yq_tc$counter)
 
 temp_tc <- read_sas(paste0(adhoc, "/results/figures/TC/routes_yq.sas7bdat"))
 yq_col
@@ -281,6 +290,8 @@ for(i in seq_along(alldrugs)) {
             #/////////////
             plot1<-ggplot(data4, aes(x= counter2, y=Pred, group = dg, color=dg, linetype=dg))+
               geom_line(size=1)+
+              #create vertical line at start of each year
+              geom_vline(xintercept=c(yq$tickmark), linetype='dotted', color = "darkgrey")+
               geom_line(aes(y=DepVar, group = dg, colour = dg), size = 1)   +
               geom_point(aes(y=DepVar, shape = dg, colour=dg), size = 2)+
               geom_line(aes(y=LowerCL, group = dg, colour = dg), size = 1, linetype="dashed")   +
@@ -417,6 +428,8 @@ for(i in seq_along(alldrugs)) {
     #/////////////
     plot1<-ggplot(data2, aes(x=counter, y=Num_Perc, group = dg, color=dg, linetype=dg))+
       geom_line(size=1)+
+      #this creates vertical lines at the start of each year
+      geom_vline(xintercept=c(yq$tickmark), linetype='dotted', color = "darkgrey")+
       geom_point(aes(y=Num_Perc, shape = dg, color = dg), size = 2)+
       scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
       scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
@@ -560,6 +573,8 @@ for(i in seq_along(alldrugs)) {
       
       geom_line(size=1)+
       geom_point(aes(y=Num_Perc, shape = dg, color = dg), size = 2)+
+       #this creates vertical lines at the start of each year
+      geom_vline(xintercept=c(yq$tickmark), linetype='dotted', color = "darkgrey")+
       scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
       scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
       scale_linetype_manual(values=type, labels = labels , guide =guide_legend(ncol=1, label.position = "right"))+
@@ -715,6 +730,8 @@ plot_tc_routes <- function(){
         plot1<-ggplot(data3, aes(x=counter, y=route_perc2, group = dg, color=dg, linetype=dg))+
           
           geom_line(size=1)+
+          #this creates vertical lines at the start of each year
+            geom_vline(xintercept=c(yq_tc$tickmark), linetype='dotted', color = "darkgrey")+
           geom_point(aes(y=route_perc2, shape = dg, color = dg), size = 2)+
           #facet_grid(cols = vars(strata))+
           
@@ -873,6 +890,8 @@ for(i in seq_along(alldrugs)) {
     plot1<-ggplot(data2, aes(x=counter, y=units, group = dg, color=dg, linetype=dg))+
       
       geom_line(size=1)+
+      #this creates vertical lines at the start of each year
+      geom_vline(xintercept=c(yq$tickmark), linetype='dotted', color = "darkgrey")+
       geom_point(aes(y=units, shape = dg, color = dg), size = 2)+
       scale_shape_manual(values= points, labels = labels, guide =guide_legend(ncol=1,label.position = "right"))+
       scale_color_manual(values=colors, labels = labels, guide =guide_legend(ncol=1,label.position = "right")) +
@@ -910,6 +929,7 @@ plot_iqvia()
 
 ```
 
+#nmurx will need to be updated next quarter
 ```{r}
 plot_nmurx <- function(){
   
